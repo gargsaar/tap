@@ -1,6 +1,6 @@
 // POST /api/retry { id } — re-enqueue the transcribe pipeline for a recording
 // whose audio is still present (e.g. it failed or got stuck). No re-upload.
-import { tasks } from "@trigger.dev/sdk";
+import { triggerTask } from "./_lib/trigger.js";
 import { getEntry, upsertEntry } from "./_lib/store.js";
 
 export default async function handler(req, res) {
@@ -19,15 +19,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const handle = await tasks.trigger("transcribe-meeting", {
+    const run = await triggerTask("transcribe-meeting", {
       id,
       audioUrl: entry.audioUrl,
       title: entry.title,
       createdAt: entry.createdAt,
       durationSec: entry.durationSec,
     });
-    await upsertEntry({ id, status: "processing", error: null, triggerRunId: handle.id });
-    return res.status(202).json({ id, status: "processing", runId: handle.id });
+    await upsertEntry({ id, status: "processing", error: null, triggerRunId: run.id });
+    return res.status(202).json({ id, status: "processing", runId: run.id });
   } catch (err) {
     return res.status(502).json({ error: err.message });
   }

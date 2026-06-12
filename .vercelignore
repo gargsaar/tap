@@ -1,0 +1,4 @@
+# Trigger.dev job code + config deploy to Trigger.dev, not Vercel — keep them
+# out of the Vercel build entirely so they can't affect function bundling.
+trigger/
+trigger.config.ts

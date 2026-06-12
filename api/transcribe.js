@@ -4,7 +4,7 @@
 // (transcribe → analyze → delete-audio), then returns immediately. All the
 // heavy/long work runs durably on Trigger.dev — no callbacks, no function
 // timeouts, automatic retries.
-import { tasks } from "@trigger.dev/sdk";
+import { triggerTask } from "./_lib/trigger.js";
 import { newId, upsertEntry, deleteBlobs } from "./_lib/store.js";
 
 export default async function handler(req, res) {
@@ -33,15 +33,15 @@ export default async function handler(req, res) {
 
   try {
     await upsertEntry(entry);
-    const handle = await tasks.trigger("transcribe-meeting", {
+    const run = await triggerTask("transcribe-meeting", {
       id,
       audioUrl,
       title: entry.title,
       createdAt: entry.createdAt,
       durationSec: entry.durationSec,
     });
-    await upsertEntry({ id, triggerRunId: handle.id });
-    return res.status(202).json({ id, status: "processing", runId: handle.id });
+    await upsertEntry({ id, triggerRunId: run.id });
+    return res.status(202).json({ id, status: "processing", runId: run.id });
   } catch (err) {
     try { await deleteBlobs([audioUrl]); } catch {}
     await upsertEntry({ ...entry, audioUrl: null, status: "failed", error: err.message }).catch(() => {});
