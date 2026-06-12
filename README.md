@@ -38,6 +38,13 @@ In your Vercel project: **Storage → Create Database → Blob**. Connecting it 
 
 Optional overrides: `DEEPGRAM_MODEL` (default `nova-3`), `GROQ_MODEL` (default `llama-3.3-70b-versatile`).
 
+### 4. Passcode gate (optional but recommended)
+
+Set **`APP_PASSCODE`** to any value to put the whole app — every page and API —
+behind a single passcode. Edge middleware blocks all requests without a valid
+auth cookie, so a URL won't even render until you sign in at `/login`. Leave
+`APP_PASSCODE` unset to disable the gate.
+
 Redeploy after adding env vars.
 
 ## How to use
@@ -64,7 +71,8 @@ Redeploy after adding env vars.
 - [x] AI meeting notes via open-source LLM (`/api/analyze`)
 - [x] Saved meeting history
 - [x] Speaker diarization
-- [ ] Auth — currently every endpoint is public; anyone with the URL can read/delete recordings
+- [x] Passcode gate (`APP_PASSCODE` + edge middleware)
+- [ ] Per-user accounts (currently one shared passcode)
 - [ ] Live transcription during the meeting
 
 ## Requirements
