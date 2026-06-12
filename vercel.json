@@ -1,6 +1,6 @@
 {
   "cleanUrls": true,
-  "buildCommand": null,
+  "buildCommand": "npx trigger.dev@latest deploy",
   "outputDirectory": "public",
   "functions": {
     "api/analyze.js": { "maxDuration": 300 }
