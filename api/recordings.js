@@ -7,6 +7,7 @@ import {
 
 export default async function handler(req, res) {
   const id = req.query?.id;
+  res.setHeader("Cache-Control", "no-store"); // polling needs fresh status
 
   try {
     if (req.method === "GET") {

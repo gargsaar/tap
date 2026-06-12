@@ -80,7 +80,19 @@
   }
   .badge.analyzed { color: var(--live); border-color: var(--live); }
   .badge.transcribed { color: var(--warn); border-color: var(--warn); }
-  .badge.analysis_failed { color: var(--rec); border-color: var(--rec); }
+  .badge.processing { color: var(--warn); border-color: var(--warn); }
+  .badge.processing::before {
+    content: "";
+    display: inline-block;
+    width: 7px; height: 7px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+    animation: blink 1.1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .badge.processing::before { animation: none; } }
+  .badge.failed, .badge.analysis_failed { color: var(--rec); border-color: var(--rec); }
 
   /* ---- detail ---- */
   .detail { display: none; }
@@ -235,9 +247,19 @@
     const s = Math.max(0, Math.round(sec || 0));
     return [s / 3600, (s % 3600) / 60, s % 60].map(n => String(Math.floor(n)).padStart(2, "0")).join(":");
   };
-  const STATUS_LABEL = { analyzed: "analyzed", transcribed: "transcribed", analysis_failed: "analysis failed" };
+  const STATUS_LABEL = {
+    processing: "processing…",
+    transcribed: "analyzing…",
+    analyzed: "analyzed",
+    analysis_failed: "analysis failed",
+    failed: "failed",
+  };
+  // Statuses still in flight — keep polling while any recording is in one.
+  const ACTIVE = new Set(["processing", "transcribed"]);
 
   let currentId = null;
+  let pollTimer = null;
+  const stopPoll = () => { if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; } };
 
   async function api(path, opts) {
     const res = await fetch(path, opts);
@@ -247,6 +269,7 @@
   }
 
   async function showList() {
+    stopPoll();
     currentId = null;
     $("detail").classList.remove("show");
     $("list").style.display = "block";
@@ -266,17 +289,23 @@
         </div>`).join("");
       $("list").querySelectorAll(".rec").forEach(el =>
         el.addEventListener("click", () => { history.pushState({}, "", "?id=" + el.dataset.id); showDetail(el.dataset.id); }));
+
+      // Auto-refresh while any job is still transcribing/analyzing.
+      if (recordings.some(r => ACTIVE.has(r.status)) && !currentId) {
+        pollTimer = setTimeout(showList, 5000);
+      }
     } catch (err) {
       $("list").innerHTML = '<div class="empty">Failed to load: ' + esc(err.message) + "</div>";
     }
   }
 
   async function showDetail(id) {
+    stopPoll();
+    const firstLoad = currentId !== id;
     currentId = id;
     $("list").style.display = "none";
     $("detail").classList.add("show");
-    $("dTitle").textContent = "Loading…";
-    $("dMeta").textContent = $("dNote").textContent = "";
+    if (firstLoad) { $("dTitle").textContent = "Loading…"; $("dMeta").textContent = $("dNote").textContent = ""; }
     try {
       const { entry, transcript, insights } = await api("/api/recordings?id=" + encodeURIComponent(id));
       $("dTitle").textContent = entry.title;
@@ -284,14 +313,29 @@
         `${(entry.createdAt || "").slice(0, 16).replace("T", " ")} · ${hms(entry.durationSec)} · ` +
         `${entry.speakers || "?"} speaker(s) · ${(entry.words || 0).toLocaleString()} words · ${STATUS_LABEL[entry.status] || entry.status}`;
 
-      $("dTranscript").textContent = transcript || "Transcript unavailable.";
+      $("dTranscript").textContent = transcript || (ACTIVE.has(entry.status) ? "Transcribing…" : "Transcript unavailable.");
       $("dlTranscript").href = entry.transcriptUrl || "#";
       $("dlTranscript").style.display = entry.transcriptUrl ? "" : "none";
       $("dlInsights").href = entry.insightsUrl || "#";
       $("dlInsights").style.display = entry.insightsUrl ? "" : "none";
 
       renderInsights(insights);
-      if (!insights) $("dNote").textContent = "No analysis yet — click “Re-run analysis” to generate summary, minutes and action items.";
+      $("dNote").className = "note";
+      if (entry.status === "processing") {
+        $("dNote").textContent = "Transcribing in the background (Deepgram)… this page updates automatically. Safe to close.";
+      } else if (entry.status === "transcribed") {
+        $("dNote").textContent = "Transcript ready — analyzing with Llama 3.3 (Groq)… updates automatically.";
+      } else if (entry.status === "failed") {
+        $("dNote").className = "note err";
+        $("dNote").textContent = "Transcription failed" + (entry.error ? ": " + entry.error : "") + ".";
+      } else if (!insights) {
+        $("dNote").textContent = "No analysis yet — click “Re-run analysis” to generate summary, minutes and action items.";
+      }
+
+      // Keep polling the detail view until the job finishes.
+      if (ACTIVE.has(entry.status) && currentId === id) {
+        pollTimer = setTimeout(() => showDetail(id), 5000);
+      }
     } catch (err) {
       $("dTitle").textContent = "Error";
       $("dNote").className = "note err";
@@ -360,6 +404,8 @@
 
   window.addEventListener("popstate", route);
   function route() {
+    stopPoll();
+    currentId = null;
     const id = new URLSearchParams(location.search).get("id");
     id ? showDetail(id) : showList();
   }

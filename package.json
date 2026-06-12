@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Record Google Meet meetings — mic + tab audio — in the browser",
   "dependencies": {
-    "@vercel/blob": "^1.1.1"
+    "@vercel/blob": "^1.1.1",
+    "@vercel/functions": "^2.0.0"
   }
 }

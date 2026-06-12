@@ -496,7 +496,9 @@
     log("Take " + takeNo + " saved (" + (blob.size / 1024 / 1024).toFixed(1) + " MB).", "ok");
   }
 
-  // ---- transcription pipeline: blob upload → Deepgram → LLM analysis ----
+  // ---- kick off async pipeline: blob upload → queue Deepgram job → done ----
+  // The job runs server-side (Deepgram callback). We don't wait for it here, so
+  // closing or refreshing the tab is safe — progress shows up in History.
   async function processTake(blob, name, durationSec, btn, statusEl) {
     btn.disabled = true;
     const step = m => { statusEl.textContent = "↳ " + m; };
@@ -510,7 +512,7 @@
         multipart: true,
       });
 
-      step("transcribing (Deepgram)… this can take a minute for long meetings");
+      step("queuing transcription…");
       const trRes = await fetch("/api/transcribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -521,23 +523,10 @@
           durationSec,
         }),
       });
-      if (!trRes.ok) throw new Error((await trRes.json()).error || "transcription failed");
+      if (!trRes.ok) throw new Error((await trRes.json()).error || "failed to queue job");
       const { id } = await trRes.json();
-      log("Transcript saved — audio deleted from storage.", "ok");
-
-      step("analyzing (Llama 3.3 on Groq)…");
-      const anRes = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      if (!anRes.ok) {
-        log("Analysis failed: " + ((await anRes.json()).error || "unknown") + " — transcript is safe, retry from History.", "warn");
-        statusEl.innerHTML = '↳ transcribed · analysis failed — <a href="/history?id=' + id + '">open in history</a> to retry';
-        return;
-      }
-      log("Analysis complete.", "ok");
-      statusEl.innerHTML = '↳ done — <a href="/history?id=' + id + '">view transcript &amp; insights →</a>';
+      log("Queued — transcribing & analyzing in the background. Safe to close this tab.", "ok");
+      statusEl.innerHTML = '↳ processing in background — <a href="/history?id=' + id + '">track in history →</a>';
     } catch (err) {
       step("failed: " + err.message);
       log("Pipeline error: " + err.message, "err");
