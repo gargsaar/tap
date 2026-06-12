@@ -1,0 +1,6 @@
+{
+  "name": "tap-meeting-recorder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Record Google Meet meetings — mic + tab audio — in the browser"
+}

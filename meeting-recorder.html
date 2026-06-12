@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tap — meeting recorder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #16130f;        /* warm studio black */
+    --panel: #211d17;
+    --panel-edge: #322c23;
+    --paper: #e8e2d6;      /* warm off-white */
+    --muted: #8a8273;
+    --rec: #e03e2d;        /* tally-light red */
+    --live: #59b36a;
+    --warn: #d9a23c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+  main { width: 100%; max-width: 560px; }
+
+  header { margin-bottom: 36px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-top: 6px; }
+  h1 .dot { color: var(--rec); }
+
+  .console {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 14px;
+    padding: 26px;
+  }
+
+  /* ---- channel strips ---- */
+  .channel {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 0;
+  }
+  .channel + .channel { border-top: 1px solid var(--panel-edge); }
+  .ch-name {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+  .ch-name.armed { color: var(--paper); }
+  .meter {
+    height: 10px;
+    background: #0d0b08;
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+  }
+  .meter .fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--live), #b9d96a 78%, var(--rec));
+    border-radius: 5px;
+    transition: width 60ms linear;
+  }
+  .ch-status {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 64px;
+    text-align: right;
+  }
+  .ch-status.ok { color: var(--live); }
+  .ch-status.bad { color: var(--warn); }
+
+  /* ---- transport ---- */
+  .transport {
+    margin-top: 26px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  button {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid var(--panel-edge);
+    background: #2b251d;
+    color: var(--paper);
+    padding: 11px 20px;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.rec { background: var(--rec); border-color: var(--rec); color: #fff; }
+  button.rec:hover:not(:disabled) { background: #c63425; }
+
+  .clock {
+    margin-left: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 26px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .clock.live { color: var(--paper); }
+  .tally {
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: #3a332a;
+  }
+  .tally.on { background: var(--rec); animation: blink 1.1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .tally.on { animation: none; } }
+
+  /* ---- log + output ---- */
+  .log {
+    margin-top: 22px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--muted);
+    background: #0d0b08;
+    border-radius: 9px;
+    padding: 14px 16px;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+  .log .warn { color: var(--warn); }
+  .log .err  { color: var(--rec); }
+  .log .ok   { color: var(--live); }
+
+  .takes { margin-top: 22px; display: none; }
+  .takes.show { display: block; }
+  .takes h2 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .take {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--panel-edge);
+  }
+  .take audio { flex: 1; height: 36px; min-width: 0; }
+  .take a {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--paper);
+    text-decoration: none;
+    border: 1px solid var(--panel-edge);
+    padding: 7px 12px;
+    border-radius: 7px;
+    white-space: nowrap;
+  }
+  .take a:hover { border-color: var(--muted); }
+
+  footer {
+    margin-top: 26px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  footer strong { color: var(--paper); font-weight: 500; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">prototype · chrome only</div>
+    <h1>Tap<span class="dot">.</span> meeting recorder</h1>
+  </header>
+
+  <div class="console">
+    <div class="channel">
+      <span class="ch-name" id="micName">MIC</span>
+      <div class="meter"><div class="fill" id="micMeter"></div></div>
+      <span class="ch-status" id="micStatus">off</span>
+    </div>
+    <div class="channel">
+      <span class="ch-name" id="tabName">TAB</span>
+      <div class="meter"><div class="fill" id="tabMeter"></div></div>
+      <span class="ch-status" id="tabStatus">off</span>
+    </div>
+
+    <div class="transport">
+      <button id="armBtn">Arm sources</button>
+      <button id="recBtn" class="rec" disabled>Record</button>
+      <div class="clock" id="clock"><span class="tally" id="tally"></span><span id="time">00:00</span></div>
+    </div>
+
+    <div class="log" id="log">→ Click “Arm sources”. Grant mic access, then pick your Google&nbsp;Meet tab and tick “Also share tab audio”.</div>
+
+    <div class="takes" id="takes">
+      <h2>Takes</h2>
+      <div id="takeList"></div>
+    </div>
+  </div>
+
+  <footer>
+    <strong>How to use:</strong> open your Meet in one Chrome tab, this page in another. Arm sources, hit Record, run the meeting, hit Stop, download the .webm. Mic = you, tab = everyone else, mixed into one track.
+  </footer>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const logEl = $("log");
+
+  // ---- state ----
+  let micStream = null, tabStream = null;
+  let audioCtx = null, mixedDest = null;
+  let micAnalyser = null, tabAnalyser = null;
+  let recorder = null, chunks = [], startedAt = 0, timerId = 0, takeNo = 0;
+  let meterRunning = false;          // FIX: guard against stacked rAF loops
+  let wakeLock = null;               // FIX: keep screen awake during recording
+
+  function log(msg, cls = "") {
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = "→ " + msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setChannel(ch, status, cls) {
+    $(ch + "Status").textContent = status;
+    $(ch + "Status").className = "ch-status" + (cls ? " " + cls : "");
+    $(ch + "Name").classList.toggle("armed", cls === "ok");
+    if (!cls) $(ch + "Meter").style.width = "0%";
+  }
+
+  function isRecording() { return recorder && recorder.state === "recording"; }
+  function bothLive()    { return !!(micStream && tabStream); }
+
+  function updateButtons() {
+    const armBtn = $("armBtn");
+    if (isRecording()) {
+      armBtn.disabled = true;
+    } else if (bothLive()) {
+      armBtn.disabled = false;
+      armBtn.textContent = "Disarm";                     // FIX: re-pick sources without reloading
+    } else if (micStream && !tabStream) {
+      armBtn.disabled = false;
+      armBtn.textContent = "Retry tab capture";          // FIX: keep mic when only tab failed
+    } else {
+      armBtn.disabled = false;
+      armBtn.textContent = "Arm sources";
+    }
+    $("recBtn").disabled = !bothLive();
+  }
+
+  // ---- audio graph ----
+  async function ensureContext() {
+    if (!audioCtx || audioCtx.state === "closed") {
+      audioCtx = new AudioContext();
+      mixedDest = audioCtx.createMediaStreamDestination();
+    }
+    if (audioCtx.state === "suspended") await audioCtx.resume();  // FIX: autoplay-policy suspension
+  }
+
+  function makeAnalyser(stream) {
+    const src = audioCtx.createMediaStreamSource(stream);
+    const an = audioCtx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);
+    src.connect(mixedDest);          // feed the mix
+    return an;
+  }
+
+  function level(an) {
+    const buf = new Uint8Array(an.fftSize);
+    an.getByteTimeDomainData(buf);
+    let peak = 0;
+    for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+    return Math.min(100, (peak / 128) * 160);   // a little gain so quiet speech still shows
+  }
+
+  function meterLoop() {
+    if (meterRunning) return;        // FIX: only one loop ever
+    meterRunning = true;
+    (function frame() {
+      if (micAnalyser) $("micMeter").style.width = level(micAnalyser) + "%";
+      if (tabAnalyser) $("tabMeter").style.width = level(tabAnalyser) + "%";
+      requestAnimationFrame(frame);
+    })();
+  }
+
+  // ---- arming, split into independent phases ----
+  async function armMic() {
+    if (micStream) return true;      // already live — don't re-prompt
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true }
+    });
+    micAnalyser = makeAnalyser(micStream);
+    setChannel("mic", "live", "ok");
+    log("Mic armed.", "ok");
+
+    // FIX: mic device unplugged / revoked mid-session
+    micStream.getAudioTracks()[0].addEventListener("ended", () => {
+      setChannel("mic", "lost", "bad");
+      micStream = null; micAnalyser = null;
+      if (isRecording()) {
+        log("Mic disconnected — still recording tab audio. Reconnect mic and re-arm after this take.", "warn");
+      } else {
+        log("Mic disconnected.", "warn");
+        updateButtons();
+      }
+    });
+    return true;
+  }
+
+  async function armTab() {
+    const ds = await navigator.mediaDevices.getDisplayMedia({
+      video: true,                    // the API requires a video track; we drop it below
+      audio: true,
+      selfBrowserSurface: "exclude",  // FIX: hide this recorder tab from the picker
+      surfaceSwitching: "include",    // let the user move to another tab via Chrome's bar
+      systemAudio: "include"
+    });
+    ds.getVideoTracks().forEach(t => t.stop()); // audio only — save CPU
+
+    const audioTracks = ds.getAudioTracks();
+    if (audioTracks.length === 0) {
+      ds.getTracks().forEach(t => t.stop());
+      setChannel("tab", "no audio", "bad");
+      log("No tab audio captured! Click “Retry tab capture”, pick a TAB (not a screen or window), and tick “Also share tab audio”.", "warn");
+      return false;                   // FIX: mic stays armed — only retry the tab
+    }
+
+    tabStream = ds;
+    tabAnalyser = makeAnalyser(new MediaStream(audioTracks));
+    setChannel("tab", "live", "ok");
+    log("Tab audio armed.", "ok");
+
+    // user clicks Chrome's "Stop sharing" bar
+    audioTracks[0].addEventListener("ended", () => {
+      if (isRecording()) {
+        log("Tab sharing stopped — saving the take.", "warn");
+        stopRecording();              // FIX: save the take instead of discarding
+      } else {
+        log("Tab sharing stopped.", "warn");
+      }
+      tabStream = null; tabAnalyser = null;
+      setChannel("tab", "off", "");
+      updateButtons();
+    });
+    return true;
+  }
+
+  async function arm() {
+    $("armBtn").disabled = true;
+    try {
+      await ensureContext();
+      await armMic();
+      const ok = await armTab();
+      if (ok) {
+        meterLoop();
+        log("Both meters should move when someone talks. Hit Record.");
+      }
+    } catch (err) {
+      log(err.name === "NotAllowedError"
+        ? "Permission denied — allow access and try again."
+        : "Error: " + err.message, "err");
+    }
+    updateButtons();
+  }
+
+  function disarm() {
+    [micStream, tabStream].forEach(s => s && s.getTracks().forEach(t => t.stop()));
+    micStream = tabStream = micAnalyser = tabAnalyser = null;
+    if (audioCtx) { audioCtx.close(); audioCtx = null; mixedDest = null; }  // FIX: no context leak
+    setChannel("mic", "off", "");
+    setChannel("tab", "off", "");
+    log("Sources disarmed.");
+    updateButtons();
+  }
+
+  // ---- recording ----
+  async function requestWakeLock() {
+    try {
+      if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    } catch (e) { /* not fatal — recording still works */ }
+  }
+
+  function startRecording() {
+    chunks = [];
+    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+    recorder = new MediaRecorder(mixedDest.stream, { mimeType: mime });
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = saveTake;
+    recorder.onerror = e => {        // FIX: salvage chunks on recorder failure
+      log("Recorder error: " + (e.error ? e.error.message : "unknown") + " — saving what was captured.", "err");
+      stopRecording();
+    };
+    recorder.start(1000); // 1s chunks so a crash never loses everything
+    startedAt = Date.now();
+    $("time").textContent = "00:00";  // FIX: no stale duration flash
+    timerId = setInterval(tick, 250);
+    $("tally").classList.add("on");
+    $("clock").classList.add("live");
+    $("recBtn").textContent = "Stop";
+    requestWakeLock();                // FIX: keep screen awake on long meetings
+    updateButtons();
+    log("Recording…", "ok");
+  }
+
+  function stopRecording() {
+    clearInterval(timerId);
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    $("tally").classList.remove("on");
+    $("clock").classList.remove("live");
+    $("recBtn").textContent = "Record";
+    updateButtons();
+  }
+
+  function tick() {
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    const mm = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    $("time").textContent = mm + ":" + ss;
+  }
+
+  function saveTake() {
+    const blob = new Blob(chunks, { type: "audio/webm" });
+    chunks = [];
+    if (blob.size === 0) {            // FIX: don't save unplayable empty files
+      log("Nothing was captured in that take — not saving.", "warn");
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    takeNo++;
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", "-").replaceAll(":", "");
+    const row = document.createElement("div");
+    row.className = "take";
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.src = url;
+    const dl = document.createElement("a");
+    dl.href = url;
+    dl.download = "meeting-" + stamp + "-take" + takeNo + ".webm";  // FIX: unique filenames
+    dl.textContent = "Download";
+    row.append(audio, dl);
+    $("takeList").prepend(row);
+    $("takes").classList.add("show");
+    log("Take " + takeNo + " saved (" + (blob.size / 1024 / 1024).toFixed(1) + " MB).", "ok");
+  }
+
+  // ---- global guards ----
+  // FIX: warn before closing the tab mid-recording
+  window.addEventListener("beforeunload", e => {
+    if (isRecording()) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  // FIX: wake lock is auto-released when the tab is hidden; re-acquire on return
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && isRecording() && !wakeLock) requestWakeLock();
+  });
+
+  $("armBtn").addEventListener("click", () => bothLive() ? disarm() : arm());
+  $("recBtn").addEventListener("click", () => isRecording() ? stopRecording() : startRecording());
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    log("This browser doesn't support tab capture — open in Chrome or Edge over HTTPS.", "err");
+    $("armBtn").disabled = true;
+  }
+})();
+</script>
+</body>
+</html>

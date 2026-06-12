@@ -1,0 +1,15 @@
+{
+  "buildCommand": null,
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Permissions-Policy", "value": "microphone=(self), display-capture=(self)" }
+      ]
+    }
+  ]
+}
