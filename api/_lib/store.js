@@ -42,11 +42,20 @@ export async function getEntry(id) {
 }
 
 // Insert or update one entry; newest first.
+// Partial updates ({id, status, ...}) may only MERGE into an existing entry.
+// If a stale index read misses the entry, inserting the fragment would corrupt
+// the list (and writing the stale list back would drop the real entry) — so we
+// refuse and let the caller's retry/next poll see fresh data instead.
 export async function upsertEntry(entry) {
   const entries = await readIndex();
   const i = entries.findIndex(e => e.id === entry.id);
-  if (i >= 0) entries[i] = { ...entries[i], ...entry };
-  else entries.unshift(entry);
+  if (i >= 0) {
+    entries[i] = { ...entries[i], ...entry };
+  } else if (entry.createdAt) {
+    entries.unshift(entry); // complete entry — genuine insert
+  } else {
+    throw new Error(`entry ${entry.id} not found in index (stale read?) — skipped partial update`);
+  }
   await writeIndex(entries);
   return entries;
 }

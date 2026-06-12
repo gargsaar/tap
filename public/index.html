@@ -504,7 +504,14 @@
     const step = m => { statusEl.textContent = "↳ " + m; };
     try {
       step("uploading audio…");
-      const { upload } = await import("https://esm.sh/@vercel/blob@1/client");
+      // Version MUST match @vercel/blob in package.json — a newer client
+      // speaks to a different upload API and the token handshake breaks (CORS).
+      let upload;
+      try {
+        ({ upload } = await import("https://esm.sh/@vercel/blob@1.1.1/client?bundle"));
+      } catch {
+        throw new Error("couldn't load the upload client — check your network and retry");
+      }
       const uploaded = await upload("audio/" + name + ".webm", blob, {
         access: "public",
         handleUploadUrl: "/api/upload",

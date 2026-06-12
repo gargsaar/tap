@@ -328,6 +328,9 @@
       } else if (entry.status === "failed") {
         $("dNote").className = "note err";
         $("dNote").textContent = "Transcription failed" + (entry.error ? ": " + entry.error : "") + ".";
+      } else if (entry.status === "analysis_failed") {
+        $("dNote").className = "note err";
+        $("dNote").textContent = "Analysis failed" + (entry.error ? ": " + entry.error : "") + " — transcript is safe, click “Re-run analysis”.";
       } else if (!insights) {
         $("dNote").textContent = "No analysis yet — click “Re-run analysis” to generate summary, minutes and action items.";
       }

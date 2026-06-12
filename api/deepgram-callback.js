@@ -42,6 +42,16 @@ async function handleResult(id, entry, dg) {
       fallback,
     });
     const tBlob = await saveTranscript(id, text);
+
+    // Audio is no longer needed — delete it before the single index update.
+    let audioDeleted = false;
+    try {
+      await deleteBlobs([entry.audioUrl]);
+      audioDeleted = true;
+    } catch { /* transcript is safe; orphaned audio is non-fatal */ }
+
+    // One consolidated write — blob reads can be stale for a few seconds after
+    // a write, so sequential read-modify-writes of index.json are not safe.
     await upsertEntry({
       id,
       status: "transcribed",
@@ -49,13 +59,8 @@ async function handleResult(id, entry, dg) {
       speakers,
       words,
       transcriptUrl: tBlob.url,
+      ...(audioDeleted ? { audioUrl: null } : {}),
     });
-
-    // Audio is no longer needed — delete it and drop the reference.
-    try {
-      await deleteBlobs([entry.audioUrl]);
-      await upsertEntry({ id, audioUrl: null });
-    } catch { /* transcript is safe; orphaned audio is non-fatal */ }
 
     // Analysis failure must not undo a good transcript.
     try {
