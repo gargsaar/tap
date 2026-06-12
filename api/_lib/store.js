@@ -15,11 +15,16 @@ async function freshFetch(url) {
 }
 
 export async function readIndex() {
-  const { blobs } = await list({ prefix: INDEX_PATH, limit: 1 });
-  if (!blobs.length) return [];
-  const res = await freshFetch(blobs[0].url);
-  if (!res.ok) return [];
-  try { return await res.json(); } catch { return []; }
+  try {
+    const { blobs } = await list({ prefix: INDEX_PATH, limit: 1 });
+    if (!blobs.length) return [];
+    const res = await freshFetch(blobs[0].url);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch (err) {
+    if (err.message?.includes("BLOB_READ_WRITE_TOKEN")) throw err;
+    return [];
+  }
 }
 
 export async function writeIndex(entries) {
