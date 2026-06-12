@@ -11,9 +11,11 @@ export default async function handler(req, res) {
   if (submitted !== passcode) return res.status(401).json({ error: "Incorrect passcode" });
 
   const token = await authToken(passcode);
+  // No Max-Age/Expires → a session cookie: cleared when the browser closes,
+  // so the passcode is required again on next launch.
   res.setHeader(
     "Set-Cookie",
-    `tap_auth=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`, // 30 days
+    `tap_auth=${token}; HttpOnly; Secure; SameSite=Lax; Path=/`,
   );
   return res.status(200).json({ ok: true });
 }
