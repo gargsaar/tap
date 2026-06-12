@@ -231,6 +231,7 @@
       <div class="actions">
         <a id="dlTranscript" download>Download transcript.txt</a>
         <a id="dlInsights" download>Download insights.json</a>
+        <button id="retryTranscribe" hidden>Retry transcription</button>
         <button id="reanalyze">Re-run analysis</button>
         <button id="deleteRec" class="danger">Delete recording</button>
       </div>
@@ -319,6 +320,12 @@
       $("dlInsights").href = entry.insightsUrl || "#";
       $("dlInsights").style.display = entry.insightsUrl ? "" : "none";
 
+      // Retry is possible only while the audio still exists (i.e. transcription
+      // hasn't succeeded yet) and the job isn't actively running.
+      const canRetry = !!entry.audioUrl && (entry.status === "failed" || entry.status === "processing");
+      $("retryTranscribe").hidden = !canRetry;
+      $("retryTranscribe").disabled = false;
+
       renderInsights(insights);
       $("dNote").className = "note";
       if (entry.status === "processing") {
@@ -375,6 +382,21 @@
       $(pane).classList.toggle("show", tab === t);
     });
   }));
+
+  $("retryTranscribe").addEventListener("click", async () => {
+    if (!currentId) return;
+    $("retryTranscribe").disabled = true;
+    $("dNote").className = "note";
+    $("dNote").textContent = "Re-submitting audio to Deepgram…";
+    try {
+      await api("/api/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentId }) });
+      await showDetail(currentId); // flips to processing + resumes polling
+    } catch (err) {
+      $("dNote").className = "note err";
+      $("dNote").textContent = "Retry failed: " + err.message;
+      $("retryTranscribe").disabled = false;
+    }
+  });
 
   $("reanalyze").addEventListener("click", async () => {
     if (!currentId) return;
