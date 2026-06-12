@@ -6,10 +6,9 @@
 // brick the app — set APP_PASSCODE in Vercel to turn the gate on.
 import { next } from "@vercel/edge";
 
-// Reachable without a passcode:
-//  /login, /api/login      → the gate itself
-//  /api/deepgram-callback  → Deepgram posts here server-to-server (no cookie)
-const PUBLIC_PATHS = ["/login", "/api/login", "/api/deepgram-callback"];
+// Reachable without a passcode: just the gate itself. (Background processing
+// runs on Trigger.dev now, so there's no inbound callback to allow-list.)
+const PUBLIC_PATHS = ["/login", "/api/login"];
 
 export const config = {
   matcher: ["/((?!_vercel|favicon.ico).*)"],

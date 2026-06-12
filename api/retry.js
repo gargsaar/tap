@@ -1,14 +1,12 @@
-// POST /api/retry { id } — re-submit an existing recording's audio to Deepgram.
-// Recovers recordings stuck at "processing" or "failed" (e.g. a callback that
-// was blocked) WITHOUT re-uploading, as long as the audio blob still exists
-// (it's only deleted after a successful transcription).
+// POST /api/retry { id } — re-enqueue the transcribe pipeline for a recording
+// whose audio is still present (e.g. it failed or got stuck). No re-upload.
+import { tasks } from "@trigger.dev/sdk";
 import { getEntry, upsertEntry } from "./_lib/store.js";
-import { submitDeepgramJob } from "./_lib/deepgram.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
-  if (!process.env.DEEPGRAM_API_KEY) {
-    return res.status(500).json({ error: "DEEPGRAM_API_KEY is not set in Vercel env vars" });
+  if (!process.env.TRIGGER_SECRET_KEY) {
+    return res.status(500).json({ error: "TRIGGER_SECRET_KEY is not set in Vercel env vars" });
   }
 
   const { id } = req.body || {};
@@ -20,17 +18,16 @@ export default async function handler(req, res) {
     return res.status(409).json({ error: "audio was already deleted (transcription previously succeeded) — nothing to retry" });
   }
 
-  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
-  const host = req.headers["x-forwarded-host"] || req.headers.host;
-  let callbackUrl = `${proto}://${host}/api/deepgram-callback?id=${id}`;
-  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
-    callbackUrl += `&x-vercel-protection-bypass=${process.env.VERCEL_AUTOMATION_BYPASS_SECRET}`;
-  }
-
   try {
-    await submitDeepgramJob(entry.audioUrl, callbackUrl);
-    await upsertEntry({ id, status: "processing", error: null });
-    return res.status(202).json({ id, status: "processing" });
+    const handle = await tasks.trigger("transcribe-meeting", {
+      id,
+      audioUrl: entry.audioUrl,
+      title: entry.title,
+      createdAt: entry.createdAt,
+      durationSec: entry.durationSec,
+    });
+    await upsertEntry({ id, status: "processing", error: null, triggerRunId: handle.id });
+    return res.status(202).json({ id, status: "processing", runId: handle.id });
   } catch (err) {
     return res.status(502).json({ error: err.message });
   }

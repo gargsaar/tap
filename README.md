@@ -5,12 +5,19 @@ Record Google Meet (or any browser tab audio) + your microphone, transcribe it w
 ## Pipeline
 
 ```
-record (browser) → upload to Vercel Blob → Deepgram Nova-3 (diarized transcript)
-                 → audio deleted → Llama 3.3 70B on Groq (summary · minutes · action items)
-                 → recording history page
+record (browser) → upload to Vercel Blob → POST /api/transcribe
+                      └─ enqueues a Trigger.dev job, returns immediately
+   Trigger.dev runs durably (retries, no timeouts):
+     transcribe-meeting  → Deepgram Nova-3 (diarized) → transcript.txt
+        ├─ analyze-meeting → Llama 3.3 70B on Groq → insights.json
+        └─ delete-audio    → removes the audio blob
+   recording history page polls index.json
 ```
 
-Audio is kept only long enough to transcribe, then deleted. What persists is file-based storage in Vercel Blob:
+Background work runs on **Trigger.dev**, not Vercel functions — so there are no
+callbacks, no 300s timeouts, and failed steps retry automatically. Audio is
+kept only long enough to transcribe, then deleted. What persists is file-based
+storage in Vercel Blob:
 
 ```
 data/index.json            ← list of all recordings + metadata (one JSON file)
@@ -38,7 +45,14 @@ In your Vercel project: **Storage → Create Database → Blob**. Connecting it 
 
 Optional overrides: `DEEPGRAM_MODEL` (default `nova-3`), `GROQ_MODEL` (default `llama-3.3-70b-versatile`).
 
-### 4. Passcode gate (optional but recommended)
+### 4. Trigger.dev (background jobs)
+
+1. Create a project at [trigger.dev](https://trigger.dev) → copy the **project ref** (`proj_…`) into `trigger.config.ts`.
+2. In the **Trigger.dev dashboard**, set env vars: `DEEPGRAM_API_KEY`, `GROQ_API_KEY`, `BLOB_READ_WRITE_TOKEN` (the jobs read/write blob + call the APIs).
+3. In **Vercel**, set `TRIGGER_SECRET_KEY` (lets `/api/transcribe` enqueue jobs).
+4. Deploy the jobs: `npx trigger.dev@latest deploy` (or connect the GitHub repo in the Trigger.dev dashboard for auto-deploy on push).
+
+### 5. Passcode gate (optional but recommended)
 
 Set **`APP_PASSCODE`** to any value to put the whole app — every page and API —
 behind a single passcode. Edge middleware blocks all requests without a valid

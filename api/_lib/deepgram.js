@@ -4,18 +4,16 @@ import { hms } from "./store.js";
 
 export const DG_MODEL = process.env.DEEPGRAM_MODEL || "nova-3";
 
-// Submit a pre-recorded job with a callback URL. Returns immediately with
-// { request_id } — Deepgram does the transcription on its own infra and POSTs
-// the result to callbackUrl when done. This is what makes the flow async.
-export async function submitDeepgramJob(audioUrl, callbackUrl) {
+// Transcribe synchronously — POST the audio URL and wait for the full result.
+// No callback (and thus no callback-reachability problems): this runs inside a
+// Trigger.dev task, which has no 300s function ceiling, so blocking is fine.
+export async function transcribeAudio(audioUrl) {
   const params = new URLSearchParams({
     model: DG_MODEL,
     smart_format: "true",
     diarize: "true",
     utterances: "true",
     punctuate: "true",
-    callback: callbackUrl,
-    callback_method: "post",
   });
   const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
     method: "POST",
@@ -27,9 +25,9 @@ export async function submitDeepgramJob(audioUrl, callbackUrl) {
   });
   if (!res.ok) {
     const detail = await res.text();
-    throw new Error(`Deepgram submit ${res.status}: ${detail.slice(0, 300)}`);
+    throw new Error(`Deepgram ${res.status}: ${detail.slice(0, 300)}`);
   }
-  return res.json(); // { request_id }
+  return res.json(); // full transcript result
 }
 
 // Pull the bits we care about out of a Deepgram result payload.

@@ -1,6 +1,6 @@
 // POST /api/analyze  { id }
 // Manual (re-)run of the LLM analysis for an already-transcribed recording.
-// The automatic run happens in /api/deepgram-callback right after transcription.
+// The automatic run happens in the analyze-meeting Trigger.dev job.
 import { upsertEntry } from "./_lib/store.js";
 import { runAnalysis } from "./_lib/analyze.js";
 
