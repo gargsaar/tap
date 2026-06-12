@@ -1,5 +1,8 @@
-// Job 1: transcribe. Runs Deepgram synchronously (no callback), saves the
-// formatted transcript, then fans out to the analyze and delete-audio jobs.
+// Root job: transcribe, then run the pipeline SEQUENTIALLY —
+//   transcribe-meeting → analyze-meeting → delete-audio
+// Each step waits for the previous (triggerAndWait), so they show as a nested
+// run tree and the audio is deleted only AFTER analysis succeeds (kept around
+// for retry if analysis fails).
 import { task } from "@trigger.dev/sdk";
 import { upsertEntry, saveTranscript } from "../api/_lib/store.js";
 import { transcribeAudio, parseDeepgram, formatTranscript } from "../api/_lib/deepgram.js";
@@ -17,7 +20,7 @@ export const transcribeMeeting = task({
 
     if (!utterances.length && !fallback.trim()) {
       await upsertEntry({ id, status: "failed", error: "Deepgram returned an empty transcript (no speech detected?)" });
-      await deleteAudio.trigger({ id, audioUrl }); // still reclaim the audio
+      await deleteAudio.triggerAndWait({ id, audioUrl }); // useless audio — reclaim it
       return { ok: false, reason: "empty" };
     }
 
@@ -32,10 +35,15 @@ export const transcribeMeeting = task({
       transcriptUrl: tBlob.url,
     });
 
-    // Fan out: separate jobs for analysis and audio cleanup.
-    await analyzeMeeting.trigger({ id });
-    await deleteAudio.trigger({ id, audioUrl });
+    // Step 2 — analysis (sequential, wait for it).
+    const analysis = await analyzeMeeting.triggerAndWait({ id });
 
-    return { ok: true, words, speakers };
+    // Step 3 — delete the audio, but only once analysis has succeeded, so a
+    // failed analysis can be retried from the still-present audio.
+    if (analysis.ok) {
+      await deleteAudio.triggerAndWait({ id, audioUrl });
+      return { ok: true, words, speakers, analyzed: true };
+    }
+    return { ok: true, words, speakers, analyzed: false };
   },
 });

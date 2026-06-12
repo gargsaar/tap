@@ -42,22 +42,31 @@ export async function getEntry(id) {
 }
 
 // Insert or update one entry; newest first.
-// Partial updates ({id, status, ...}) may only MERGE into an existing entry.
-// If a stale index read misses the entry, inserting the fragment would corrupt
-// the list (and writing the stale list back would drop the real entry) — so we
-// refuse and let the caller's retry/next poll see fresh data instead.
+//
+// index.json on Blob is eventually consistent: a read taken right after another
+// writer's put() can still miss the just-written entry. A complete entry (has
+// createdAt) is a genuine insert. A partial update ({id, status, ...}) must
+// MERGE into an existing entry — so if the read misses it, we retry the read a
+// few times to let the prior write propagate, rather than corrupting the list
+// by inserting a fragment or dropping the real entry.
 export async function upsertEntry(entry) {
-  const entries = await readIndex();
-  const i = entries.findIndex(e => e.id === entry.id);
-  if (i >= 0) {
-    entries[i] = { ...entries[i], ...entry };
-  } else if (entry.createdAt) {
-    entries.unshift(entry); // complete entry — genuine insert
-  } else {
-    throw new Error(`entry ${entry.id} not found in index (stale read?) — skipped partial update`);
+  const maxAttempts = entry.createdAt ? 1 : 6;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const entries = await readIndex();
+    const i = entries.findIndex(e => e.id === entry.id);
+    if (i >= 0) {
+      entries[i] = { ...entries[i], ...entry };
+      await writeIndex(entries);
+      return entries;
+    }
+    if (entry.createdAt) {
+      entries.unshift(entry); // complete entry — genuine insert
+      await writeIndex(entries);
+      return entries;
+    }
+    await new Promise(r => setTimeout(r, 1500)); // wait for the write to propagate
   }
-  await writeIndex(entries);
-  return entries;
+  throw new Error(`entry ${entry.id} not found in index after ${maxAttempts} attempts (stale read?)`);
 }
 
 export async function removeEntry(id) {
