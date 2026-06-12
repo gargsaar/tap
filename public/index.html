@@ -504,19 +504,22 @@
     const step = m => { statusEl.textContent = "↳ " + m; };
     try {
       step("uploading audio…");
-      // Version MUST match @vercel/blob in package.json — a newer client
-      // speaks to a different upload API and the token handshake breaks (CORS).
+      // Pinned to the exact @vercel/blob version in package.json. A floating
+      // "@1" let esm.sh serve a newer client whose multipart flow POSTs to
+      // vercel.com/api/blob/mpu → 400 → surfaces as a CORS error in the console.
       let upload;
       try {
         ({ upload } = await import("https://esm.sh/@vercel/blob@1.1.1/client?bundle"));
       } catch {
         throw new Error("couldn't load the upload client — check your network and retry");
       }
+      // No multipart: a single direct PUT to blob storage. It still bypasses the
+      // 4.5 MB function-body limit (bytes go browser→blob, not through a
+      // function) and avoids the broken multipart-init endpoint entirely.
       const uploaded = await upload("audio/" + name + ".webm", blob, {
         access: "public",
         handleUploadUrl: "/api/upload",
         contentType: "audio/webm",
-        multipart: true,
       });
 
       step("queuing transcription…");
