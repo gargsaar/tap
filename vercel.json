@@ -1,6 +1,10 @@
 {
   "buildCommand": null,
   "outputDirectory": "public",
+  "functions": {
+    "api/transcribe.js": { "maxDuration": 300 },
+    "api/analyze.js": { "maxDuration": 300 }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" }
   ],

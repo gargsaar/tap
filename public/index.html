@@ -178,6 +178,23 @@
     white-space: nowrap;
   }
   .take a:hover { border-color: var(--muted); }
+  .take button {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    white-space: nowrap;
+  }
+  .take-status {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 0 0 8px;
+  }
+  .take-status a { color: var(--live); }
+
+  .eyebrow a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--panel-edge); }
+  .eyebrow a:hover { color: var(--paper); }
 
   footer {
     margin-top: 26px;
@@ -191,7 +208,7 @@
 <body>
 <main>
   <header>
-    <div class="eyebrow">prototype · chrome only</div>
+    <div class="eyebrow">prototype · chrome only · <a href="/history.html">history →</a></div>
     <h1>Tap<span class="dot">.</span> meeting recorder</h1>
   </header>
 
@@ -453,9 +470,11 @@
       log("Nothing was captured in that take — not saving.", "warn");
       return;
     }
+    const durationSec = Math.round((Date.now() - startedAt) / 1000);
     const url = URL.createObjectURL(blob);
     takeNo++;
     const stamp = new Date().toISOString().slice(0, 16).replace("T", "-").replaceAll(":", "");
+    const name = "meeting-" + stamp + "-take" + takeNo;
     const row = document.createElement("div");
     row.className = "take";
     const audio = document.createElement("audio");
@@ -463,12 +482,67 @@
     audio.src = url;
     const dl = document.createElement("a");
     dl.href = url;
-    dl.download = "meeting-" + stamp + "-take" + takeNo + ".webm";  // FIX: unique filenames
+    dl.download = name + ".webm";     // FIX: unique filenames
     dl.textContent = "Download";
-    row.append(audio, dl);
+    const tr = document.createElement("button");
+    tr.textContent = "Transcribe";
+    const status = document.createElement("div");
+    status.className = "take-status";
+    tr.addEventListener("click", () => processTake(blob, name, durationSec, tr, status));
+    row.append(audio, dl, tr);
+    $("takeList").prepend(status);
     $("takeList").prepend(row);
     $("takes").classList.add("show");
     log("Take " + takeNo + " saved (" + (blob.size / 1024 / 1024).toFixed(1) + " MB).", "ok");
+  }
+
+  // ---- transcription pipeline: blob upload → Deepgram → LLM analysis ----
+  async function processTake(blob, name, durationSec, btn, statusEl) {
+    btn.disabled = true;
+    const step = m => { statusEl.textContent = "↳ " + m; };
+    try {
+      step("uploading audio…");
+      const { upload } = await import("https://esm.sh/@vercel/blob@1/client");
+      const uploaded = await upload("audio/" + name + ".webm", blob, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+        contentType: "audio/webm",
+        multipart: true,
+      });
+
+      step("transcribing (Deepgram)… this can take a minute for long meetings");
+      const trRes = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioUrl: uploaded.url,
+          title: name,
+          audioBytes: blob.size,
+          durationSec,
+        }),
+      });
+      if (!trRes.ok) throw new Error((await trRes.json()).error || "transcription failed");
+      const { id } = await trRes.json();
+      log("Transcript saved — audio deleted from storage.", "ok");
+
+      step("analyzing (Llama 3.3 on Groq)…");
+      const anRes = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!anRes.ok) {
+        log("Analysis failed: " + ((await anRes.json()).error || "unknown") + " — transcript is safe, retry from History.", "warn");
+        statusEl.innerHTML = '↳ transcribed · analysis failed — <a href="/history.html?id=' + id + '">open in history</a> to retry';
+        return;
+      }
+      log("Analysis complete.", "ok");
+      statusEl.innerHTML = '↳ done — <a href="/history.html?id=' + id + '">view transcript &amp; insights →</a>';
+    } catch (err) {
+      step("failed: " + err.message);
+      log("Pipeline error: " + err.message, "err");
+      btn.disabled = false;           // allow retry
+    }
   }
 
   // ---- global guards ----
