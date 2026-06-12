@@ -40,7 +40,9 @@ export default async function handler(req, res) {
       createdAt: entry.createdAt,
       durationSec: entry.durationSec,
     });
-    await upsertEntry({ id, triggerRunId: run.id });
+    // No second write here: reading the index back immediately after the insert
+    // above can miss it (eventual consistency) and needlessly fail. The runId
+    // is returned to the client; it doesn't need to live in the index.
     return res.status(202).json({ id, status: "processing", runId: run.id });
   } catch (err) {
     try { await deleteBlobs([audioUrl]); } catch {}
