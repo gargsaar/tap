@@ -208,7 +208,7 @@
 <body>
 <main>
   <header>
-    <div class="eyebrow">prototype · chrome only · <a href="/history.html">history →</a></div>
+    <div class="eyebrow">prototype · chrome only · <a href="/history">history →</a></div>
     <h1>Tap<span class="dot">.</span> meeting recorder</h1>
   </header>
 
@@ -533,11 +533,11 @@
       });
       if (!anRes.ok) {
         log("Analysis failed: " + ((await anRes.json()).error || "unknown") + " — transcript is safe, retry from History.", "warn");
-        statusEl.innerHTML = '↳ transcribed · analysis failed — <a href="/history.html?id=' + id + '">open in history</a> to retry';
+        statusEl.innerHTML = '↳ transcribed · analysis failed — <a href="/history?id=' + id + '">open in history</a> to retry';
         return;
       }
       log("Analysis complete.", "ok");
-      statusEl.innerHTML = '↳ done — <a href="/history.html?id=' + id + '">view transcript &amp; insights →</a>';
+      statusEl.innerHTML = '↳ done — <a href="/history?id=' + id + '">view transcript &amp; insights →</a>';
     } catch (err) {
       step("failed: " + err.message);
       log("Pipeline error: " + err.message, "err");
