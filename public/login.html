@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tap — sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#16130f; --panel:#211d17; --panel-edge:#322c23; --paper:#e8e2d6; --muted:#8a8273; --rec:#e03e2d; --live:#59b36a; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--ink); color:var(--paper); font-family:"Space Grotesk",system-ui,sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card { width:100%; max-width:380px; background:var(--panel); border:1px solid var(--panel-edge);
+    border-radius:14px; padding:30px; }
+  .eyebrow { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:0.18em;
+    text-transform:uppercase; color:var(--muted); }
+  h1 { font-size:26px; font-weight:600; margin-top:6px; margin-bottom:22px; }
+  h1 .dot { color:var(--rec); }
+  label { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:0.1em;
+    text-transform:uppercase; color:var(--muted); display:block; margin-bottom:8px; }
+  input { width:100%; padding:13px 14px; border:1px solid var(--panel-edge); border-radius:9px;
+    background:#2b251d; color:var(--paper); font-size:16px; font-family:"IBM Plex Mono",monospace;
+    letter-spacing:0.1em; }
+  input:focus { outline:none; border-color:var(--muted); }
+  button { width:100%; margin-top:16px; padding:13px; border:none; border-radius:9px;
+    background:var(--paper); color:var(--ink); font-size:15px; font-weight:600;
+    font-family:"Space Grotesk",sans-serif; cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  .err { color:var(--rec); font-size:13px; font-family:"IBM Plex Mono",monospace;
+    margin-top:14px; min-height:16px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="eyebrow">prototype · private</div>
+    <h1>Tap<span class="dot">.</span> sign in</h1>
+    <form id="form">
+      <label for="pc">Passcode</label>
+      <input id="pc" type="password" autocomplete="current-password" autofocus required>
+      <button id="btn" type="submit">Enter</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
+<script>
+  const form = document.getElementById("form");
+  const btn = document.getElementById("btn");
+  const err = document.getElementById("err");
+
+  // Only allow same-origin path redirects (no open-redirect).
+  function safeNext() {
+    const n = new URLSearchParams(location.search).get("next") || "/";
+    return n.startsWith("/") && !n.startsWith("//") ? n : "/";
+  }
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    err.textContent = "";
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode: document.getElementById("pc").value }),
+      });
+      if (res.ok) { location.href = safeNext(); return; }
+      const data = await res.json().catch(() => ({}));
+      err.textContent = data.error || "Sign in failed";
+    } catch (e2) {
+      err.textContent = "Network error — try again";
+    }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>

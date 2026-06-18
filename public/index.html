@@ -178,6 +178,23 @@
     white-space: nowrap;
   }
   .take a:hover { border-color: var(--muted); }
+  .take button {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    white-space: nowrap;
+  }
+  .take-status {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 0 0 8px;
+  }
+  .take-status a { color: var(--live); }
+
+  .eyebrow a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--panel-edge); }
+  .eyebrow a:hover { color: var(--paper); }
 
   footer {
     margin-top: 26px;
@@ -191,7 +208,7 @@
 <body>
 <main>
   <header>
-    <div class="eyebrow">prototype · chrome only</div>
+    <div class="eyebrow">prototype · chrome only · <a href="/history">history →</a></div>
     <h1>Tap<span class="dot">.</span> meeting recorder</h1>
   </header>
 
@@ -453,9 +470,11 @@
       log("Nothing was captured in that take — not saving.", "warn");
       return;
     }
+    const durationSec = Math.round((Date.now() - startedAt) / 1000);
     const url = URL.createObjectURL(blob);
     takeNo++;
     const stamp = new Date().toISOString().slice(0, 16).replace("T", "-").replaceAll(":", "");
+    const name = "meeting-" + stamp + "-take" + takeNo;
     const row = document.createElement("div");
     row.className = "take";
     const audio = document.createElement("audio");
@@ -463,12 +482,66 @@
     audio.src = url;
     const dl = document.createElement("a");
     dl.href = url;
-    dl.download = "meeting-" + stamp + "-take" + takeNo + ".webm";  // FIX: unique filenames
+    dl.download = name + ".webm";     // FIX: unique filenames
     dl.textContent = "Download";
-    row.append(audio, dl);
+    const tr = document.createElement("button");
+    tr.textContent = "Transcribe";
+    const status = document.createElement("div");
+    status.className = "take-status";
+    tr.addEventListener("click", () => processTake(blob, name, durationSec, tr, status));
+    row.append(audio, dl, tr);
+    $("takeList").prepend(status);
     $("takeList").prepend(row);
     $("takes").classList.add("show");
     log("Take " + takeNo + " saved (" + (blob.size / 1024 / 1024).toFixed(1) + " MB).", "ok");
+  }
+
+  // ---- kick off async pipeline: blob upload → queue Deepgram job → done ----
+  // The job runs server-side (Deepgram callback). We don't wait for it here, so
+  // closing or refreshing the tab is safe — progress shows up in History.
+  async function processTake(blob, name, durationSec, btn, statusEl) {
+    btn.disabled = true;
+    const step = m => { statusEl.textContent = "↳ " + m; };
+    try {
+      step("uploading audio…");
+      // Pinned to the exact @vercel/blob version in package.json. A floating
+      // "@1" let esm.sh serve a newer client whose multipart flow POSTs to
+      // vercel.com/api/blob/mpu → 400 → surfaces as a CORS error in the console.
+      let upload;
+      try {
+        ({ upload } = await import("https://esm.sh/@vercel/blob@1.1.1/client?bundle"));
+      } catch {
+        throw new Error("couldn't load the upload client — check your network and retry");
+      }
+      // No multipart: a single direct PUT to blob storage. It still bypasses the
+      // 4.5 MB function-body limit (bytes go browser→blob, not through a
+      // function) and avoids the broken multipart-init endpoint entirely.
+      const uploaded = await upload("audio/" + name + ".webm", blob, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+        contentType: "audio/webm",
+      });
+
+      step("queuing transcription…");
+      const trRes = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioUrl: uploaded.url,
+          title: name,
+          audioBytes: blob.size,
+          durationSec,
+        }),
+      });
+      if (!trRes.ok) throw new Error((await trRes.json()).error || "failed to queue job");
+      const { id } = await trRes.json();
+      log("Queued — transcribing & analyzing in the background. Safe to close this tab.", "ok");
+      statusEl.innerHTML = '↳ processing in background — <a href="/history?id=' + id + '">track in history →</a>';
+    } catch (err) {
+      step("failed: " + err.message);
+      log("Pipeline error: " + err.message, "err");
+      btn.disabled = false;           // allow retry
+    }
   }
 
   // ---- global guards ----

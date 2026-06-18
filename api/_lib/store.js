@@ -1,0 +1,127 @@
+// Shared file-based storage helpers backed by Vercel Blob.
+//
+// Layout:
+//   data/index.json            ← one JSON file: list of recordings + metadata
+//   data/<id>/transcript.txt   ← formatted transcript (one txt per recording)
+//   data/<id>/insights.json    ← LLM analysis (one json per recording)
+//   audio/<...>.webm           ← uploaded audio, deleted right after transcription
+import { put, del, list } from "@vercel/blob";
+
+const INDEX_PATH = "data/index.json";
+
+// Blob's CDN caches aggressively; a unique query param guarantees a fresh read.
+async function freshFetch(url) {
+  return fetch(`${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`, { cache: "no-store" });
+}
+
+export async function readIndex() {
+  try {
+    const { blobs } = await list({ prefix: INDEX_PATH, limit: 1 });
+    if (!blobs.length) return [];
+    const res = await freshFetch(blobs[0].url);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch (err) {
+    if (err.message?.includes("BLOB_READ_WRITE_TOKEN")) throw err;
+    return [];
+  }
+}
+
+export async function writeIndex(entries) {
+  await put(INDEX_PATH, JSON.stringify(entries, null, 2), {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "application/json",
+    cacheControlMaxAge: 60,
+  });
+}
+
+export async function getEntry(id) {
+  return (await readIndex()).find(e => e.id === id) || null;
+}
+
+// Insert or update one entry; newest first.
+//
+// index.json on Blob is eventually consistent: a read taken right after another
+// writer's put() can still miss the just-written entry. A complete entry (has
+// createdAt) is a genuine insert. A partial update ({id, status, ...}) must
+// MERGE into an existing entry — so if the read misses it, we retry the read a
+// few times to let the prior write propagate, rather than corrupting the list
+// by inserting a fragment or dropping the real entry.
+export async function upsertEntry(entry) {
+  const maxAttempts = entry.createdAt ? 1 : 6;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const entries = await readIndex();
+    const i = entries.findIndex(e => e.id === entry.id);
+    if (i >= 0) {
+      entries[i] = { ...entries[i], ...entry };
+      await writeIndex(entries);
+      return entries;
+    }
+    if (entry.createdAt) {
+      entries.unshift(entry); // complete entry — genuine insert
+      await writeIndex(entries);
+      return entries;
+    }
+    await new Promise(r => setTimeout(r, 1500)); // wait for the write to propagate
+  }
+  throw new Error(`entry ${entry.id} not found in index after ${maxAttempts} attempts (stale read?)`);
+}
+
+export async function removeEntry(id) {
+  const entries = await readIndex();
+  const entry = entries.find(e => e.id === id);
+  await writeIndex(entries.filter(e => e.id !== id));
+  return entry;
+}
+
+export async function saveTranscript(id, text) {
+  return put(`data/${id}/transcript.txt`, text, {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "text/plain; charset=utf-8",
+    cacheControlMaxAge: 60,
+  });
+}
+
+export async function saveInsights(id, insights) {
+  return put(`data/${id}/insights.json`, JSON.stringify(insights, null, 2), {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "application/json",
+    cacheControlMaxAge: 60,
+  });
+}
+
+export async function fetchText(url) {
+  const res = await freshFetch(url);
+  if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
+  return res.text();
+}
+
+export async function fetchJson(url) {
+  const res = await freshFetch(url);
+  if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
+  return res.json();
+}
+
+export async function deleteBlobs(urls) {
+  const real = urls.filter(Boolean);
+  if (real.length) await del(real);
+}
+
+export function newId() {
+  const t = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "").replace(/-/g, "");
+  return `rec_${t}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function hms(totalSec) {
+  const s = Math.max(0, Math.round(totalSec));
+  const h = String(Math.floor(s / 3600)).padStart(2, "0");
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${h}:${m}:${ss}`;
+}

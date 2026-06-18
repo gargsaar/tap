@@ -1,6 +1,15 @@
 {
   "name": "tap-meeting-recorder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Record Google Meet meetings — mic + tab audio — in the browser"
+  "type": "module",
+  "description": "Record Google Meet meetings — mic + tab audio — in the browser",
+  "dependencies": {
+    "@trigger.dev/sdk": "^4.4.6",
+    "@vercel/blob": "^1.1.1",
+    "@vercel/edge": "^1.2.2"
+  },
+  "devDependencies": {
+    "trigger.dev": "^4.4.6"
+  }
 }

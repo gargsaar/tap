@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tap — recording history</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #16130f;
+    --panel: #211d17;
+    --panel-edge: #322c23;
+    --paper: #e8e2d6;
+    --muted: #8a8273;
+    --rec: #e03e2d;
+    --live: #59b36a;
+    --warn: #d9a23c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+  main { width: 100%; max-width: 760px; }
+  header { margin-bottom: 36px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .eyebrow a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--panel-edge); }
+  .eyebrow a:hover { color: var(--paper); }
+  h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-top: 6px; }
+  h1 .dot { color: var(--rec); }
+
+  .console {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 14px;
+    padding: 26px;
+  }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+  .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+  /* ---- list ---- */
+  .rec {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 14px;
+    padding: 14px 4px;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .rec:hover { background: #2b251d; }
+  .rec + .rec { border-top: 1px solid var(--panel-edge); }
+  .rec .title { font-size: 15px; font-weight: 500; }
+  .rec .meta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .badge {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--panel-edge);
+    color: var(--muted);
+    align-self: center;
+  }
+  .badge.analyzed { color: var(--live); border-color: var(--live); }
+  .badge.transcribed { color: var(--warn); border-color: var(--warn); }
+  .badge.processing { color: var(--warn); border-color: var(--warn); }
+  .badge.processing::before {
+    content: "";
+    display: inline-block;
+    width: 7px; height: 7px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+    animation: blink 1.1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .badge.processing::before { animation: none; } }
+  .badge.failed, .badge.analysis_failed { color: var(--rec); border-color: var(--rec); }
+
+  /* ---- detail ---- */
+  .detail { display: none; }
+  .detail.show { display: block; }
+  .back {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    display: inline-block;
+    margin-bottom: 16px;
+  }
+  .back:hover { color: var(--paper); }
+  .detail h2 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .detail .meta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tabs button {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    border: 1px solid var(--panel-edge);
+    background: transparent;
+    color: var(--muted);
+    padding: 8px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .tabs button.active { color: var(--paper); border-color: var(--muted); background: #2b251d; }
+
+  .pane { display: none; }
+  .pane.show { display: block; }
+
+  section + section { margin-top: 22px; }
+  section h3 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .summary { font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
+  ul.points { list-style: none; }
+  ul.points li {
+    font-size: 14px; line-height: 1.6; padding: 6px 0 6px 18px; position: relative;
+  }
+  ul.points li::before { content: "→"; position: absolute; left: 0; color: var(--muted); }
+
+  .minute { padding: 10px 0; border-top: 1px solid var(--panel-edge); }
+  .minute b { font-size: 14px; font-weight: 500; }
+  .minute ul { list-style: none; margin-top: 6px; }
+  .minute ul li { font-size: 13px; color: var(--muted); line-height: 1.6; padding: 2px 0 2px 16px; position: relative; }
+  .minute ul li::before { content: "·"; position: absolute; left: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px 9px 0; border-top: 1px solid var(--panel-edge); vertical-align: top; line-height: 1.5; }
+  th { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-top: none; }
+  td.owner, td.due { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  pre.transcript {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #0d0b08;
+    border-radius: 9px;
+    padding: 18px;
+    max-height: 540px;
+    overflow-y: auto;
+    color: #c9c2b2;
+  }
+
+  .actions { margin-top: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .actions a, .actions button {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--paper);
+    background: #2b251d;
+    text-decoration: none;
+    border: 1px solid var(--panel-edge);
+    padding: 9px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .actions a:hover, .actions button:hover:not(:disabled) { border-color: var(--muted); }
+  .actions button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .actions button.danger { color: var(--rec); }
+  .note { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); margin-top: 14px; }
+  .note.err { color: var(--rec); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow"><a href="/">← recorder</a> · history</div>
+    <h1>Tap<span class="dot">.</span> recording history</h1>
+  </header>
+
+  <div class="console">
+    <div id="list"><div class="empty">Loading…</div></div>
+
+    <div class="detail" id="detail">
+      <a class="back" href="/history">← all recordings</a>
+      <h2 id="dTitle"></h2>
+      <div class="meta" id="dMeta"></div>
+
+      <div class="tabs">
+        <button id="tabInsights" class="active">Insights</button>
+        <button id="tabTranscript">Transcript</button>
+      </div>
+
+      <div class="pane show" id="paneInsights">
+        <section><h3>Summary</h3><div class="summary" id="iSummary"></div></section>
+        <section><h3>Key points</h3><ul class="points" id="iPoints"></ul></section>
+        <section><h3>Decisions</h3><ul class="points" id="iDecisions"></ul></section>
+        <section><h3>Meeting minutes</h3><div id="iMinutes"></div></section>
+        <section>
+          <h3>Action items</h3>
+          <table>
+            <thead><tr><th>Task</th><th>Owner</th><th>Due</th></tr></thead>
+            <tbody id="iActions"></tbody>
+          </table>
+        </section>
+      </div>
+
+      <div class="pane" id="paneTranscript">
+        <pre class="transcript" id="dTranscript"></pre>
+      </div>
+
+      <div class="actions">
+        <a id="dlTranscript" download>Download transcript.txt</a>
+        <a id="dlInsights" download>Download insights.json</a>
+        <button id="retryTranscribe" hidden>Retry transcription</button>
+        <button id="reanalyze">Re-run analysis</button>
+        <button id="deleteRec" class="danger">Delete recording</button>
+      </div>
+      <div class="note" id="dNote"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const hms = sec => {
+    const s = Math.max(0, Math.round(sec || 0));
+    return [s / 3600, (s % 3600) / 60, s % 60].map(n => String(Math.floor(n)).padStart(2, "0")).join(":");
+  };
+  const STATUS_LABEL = {
+    processing: "processing…",
+    transcribed: "analyzing…",
+    analyzed: "analyzed",
+    analysis_failed: "analysis failed",
+    failed: "failed",
+  };
+  // Statuses still in flight — keep polling while any recording is in one.
+  const ACTIVE = new Set(["processing", "transcribed"]);
+
+  let currentId = null;
+  let pollTimer = null;
+  const stopPoll = () => { if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; } };
+
+  async function api(path, opts) {
+    const res = await fetch(path, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  async function showList() {
+    stopPoll();
+    currentId = null;
+    $("detail").classList.remove("show");
+    $("list").style.display = "block";
+    try {
+      const { recordings } = await api("/api/recordings");
+      if (!recordings.length) {
+        $("list").innerHTML = '<div class="empty">No recordings yet — record a meeting, hit “Transcribe”, and it lands here.</div>';
+        return;
+      }
+      $("list").innerHTML = recordings.map(r => `
+        <div class="rec" data-id="${esc(r.id)}">
+          <div>
+            <div class="title">${esc(r.title)}</div>
+            <div class="meta">${esc((r.createdAt || "").slice(0, 16).replace("T", " "))} · ${hms(r.durationSec)} · ${r.speakers || "?"} speaker(s) · ${(r.words || 0).toLocaleString()} words</div>
+          </div>
+          <span class="badge ${esc(r.status)}">${esc(STATUS_LABEL[r.status] || r.status)}</span>
+        </div>`).join("");
+      $("list").querySelectorAll(".rec").forEach(el =>
+        el.addEventListener("click", () => { history.pushState({}, "", "?id=" + el.dataset.id); showDetail(el.dataset.id); }));
+
+      // Auto-refresh while any job is still transcribing/analyzing.
+      if (recordings.some(r => ACTIVE.has(r.status)) && !currentId) {
+        pollTimer = setTimeout(showList, 5000);
+      }
+    } catch (err) {
+      $("list").innerHTML = '<div class="empty">Failed to load: ' + esc(err.message) + "</div>";
+    }
+  }
+
+  async function showDetail(id) {
+    stopPoll();
+    const firstLoad = currentId !== id;
+    currentId = id;
+    $("list").style.display = "none";
+    $("detail").classList.add("show");
+    if (firstLoad) { $("dTitle").textContent = "Loading…"; $("dMeta").textContent = $("dNote").textContent = ""; }
+    try {
+      const { entry, transcript, insights } = await api("/api/recordings?id=" + encodeURIComponent(id));
+      $("dTitle").textContent = entry.title;
+      $("dMeta").textContent =
+        `${(entry.createdAt || "").slice(0, 16).replace("T", " ")} · ${hms(entry.durationSec)} · ` +
+        `${entry.speakers || "?"} speaker(s) · ${(entry.words || 0).toLocaleString()} words · ${STATUS_LABEL[entry.status] || entry.status}`;
+
+      $("dTranscript").textContent = transcript || (ACTIVE.has(entry.status) ? "Transcribing…" : "Transcript unavailable.");
+      $("dlTranscript").href = entry.transcriptUrl || "#";
+      $("dlTranscript").style.display = entry.transcriptUrl ? "" : "none";
+      $("dlInsights").href = entry.insightsUrl || "#";
+      $("dlInsights").style.display = entry.insightsUrl ? "" : "none";
+
+      // Retry is possible only while the audio still exists (i.e. transcription
+      // hasn't succeeded yet) and the job isn't actively running.
+      const canRetry = !!entry.audioUrl && (entry.status === "failed" || entry.status === "processing");
+      $("retryTranscribe").hidden = !canRetry;
+      $("retryTranscribe").disabled = false;
+
+      renderInsights(insights);
+      $("dNote").className = "note";
+      if (entry.status === "processing") {
+        $("dNote").textContent = "Transcribing in the background (Deepgram)… this page updates automatically. Safe to close.";
+      } else if (entry.status === "transcribed") {
+        $("dNote").textContent = "Transcript ready — analyzing with Llama 3.3 (Groq)… updates automatically.";
+      } else if (entry.status === "failed") {
+        $("dNote").className = "note err";
+        $("dNote").textContent = "Transcription failed" + (entry.error ? ": " + entry.error : "") + ".";
+      } else if (entry.status === "analysis_failed") {
+        $("dNote").className = "note err";
+        $("dNote").textContent = "Analysis failed" + (entry.error ? ": " + entry.error : "") + " — transcript is safe, click “Re-run analysis”.";
+      } else if (!insights) {
+        $("dNote").textContent = "No analysis yet — click “Re-run analysis” to generate summary, minutes and action items.";
+      }
+
+      // Keep polling the detail view until the job finishes.
+      if (ACTIVE.has(entry.status) && currentId === id) {
+        pollTimer = setTimeout(() => showDetail(id), 5000);
+      }
+    } catch (err) {
+      $("dTitle").textContent = "Error";
+      $("dNote").className = "note err";
+      $("dNote").textContent = err.message;
+    }
+  }
+
+  function renderInsights(ins) {
+    const list = (el, items, render) => {
+      $(el).innerHTML = (items && items.length)
+        ? items.map(render).join("")
+        : '<li style="color:var(--muted)">none</li>';
+    };
+    $("iSummary").textContent = ins?.summary || "—";
+    list("iPoints", ins?.key_points, p => `<li>${esc(p)}</li>`);
+    list("iDecisions", ins?.decisions, d => `<li>${esc(d)}</li>`);
+    $("iMinutes").innerHTML = (ins?.meeting_minutes?.length)
+      ? ins.meeting_minutes.map(m => `
+          <div class="minute"><b>${esc(m.topic)}</b>
+            <ul>${(m.discussion || []).map(d => `<li>${esc(d)}</li>`).join("")}</ul>
+          </div>`).join("")
+      : '<div class="minute" style="color:var(--muted)">none</div>';
+    $("iActions").innerHTML = (ins?.action_items?.length)
+      ? ins.action_items.map(a => `
+          <tr><td>${esc(a.task)}</td><td class="owner">${esc(a.owner || "unassigned")}</td><td class="due">${esc(a.due || "—")}</td></tr>`).join("")
+      : '<tr><td style="color:var(--muted)">none</td><td></td><td></td></tr>';
+  }
+
+  // tabs
+  const tabs = { tabInsights: "paneInsights", tabTranscript: "paneTranscript" };
+  Object.keys(tabs).forEach(t => $(t).addEventListener("click", () => {
+    Object.entries(tabs).forEach(([tab, pane]) => {
+      $(tab).classList.toggle("active", tab === t);
+      $(pane).classList.toggle("show", tab === t);
+    });
+  }));
+
+  $("retryTranscribe").addEventListener("click", async () => {
+    if (!currentId) return;
+    $("retryTranscribe").disabled = true;
+    $("dNote").className = "note";
+    $("dNote").textContent = "Re-submitting audio to Deepgram…";
+    try {
+      await api("/api/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentId }) });
+      await showDetail(currentId); // flips to processing + resumes polling
+    } catch (err) {
+      $("dNote").className = "note err";
+      $("dNote").textContent = "Retry failed: " + err.message;
+      $("retryTranscribe").disabled = false;
+    }
+  });
+
+  $("reanalyze").addEventListener("click", async () => {
+    if (!currentId) return;
+    $("reanalyze").disabled = true;
+    $("dNote").className = "note";
+    $("dNote").textContent = "Analyzing with Llama 3.3 on Groq… long meetings can take a couple of minutes.";
+    try {
+      await api("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentId }) });
+      await showDetail(currentId);
+    } catch (err) {
+      $("dNote").className = "note err";
+      $("dNote").textContent = "Analysis failed: " + err.message;
+    }
+    $("reanalyze").disabled = false;
+  });
+
+  $("deleteRec").addEventListener("click", async () => {
+    if (!currentId || !confirm("Delete this recording's transcript and insights permanently?")) return;
+    $("deleteRec").disabled = true;
+    try {
+      await api("/api/recordings?id=" + encodeURIComponent(currentId), { method: "DELETE" });
+      history.pushState({}, "", "/history");
+      await showList();
+    } catch (err) {
+      $("dNote").className = "note err";
+      $("dNote").textContent = "Delete failed: " + err.message;
+    }
+    $("deleteRec").disabled = false;
+  });
+
+  window.addEventListener("popstate", route);
+  function route() {
+    stopPoll();
+    currentId = null;
+    const id = new URLSearchParams(location.search).get("id");
+    id ? showDetail(id) : showList();
+  }
+  route();
+})();
+</script>
+</body>
+</html>
